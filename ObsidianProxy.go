@@ -429,11 +429,12 @@ func (server *Server)CheckPassword(INIPath string,sectionName string,playerName 
 }
 /*换行150次清屏*/
 func (server *Server)ClearScreen(){
-	server.Execute("tellraw" + " " + "@a" + " " + "{\"rawtext\":[{\"text\":\"\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\"}]")
-	server.Execute("tellraw" + " " + "@a" + " " + "{\"rawtext\":[{\"text\":\"\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\"}]")
-	server.Execute("tellraw" + " " + "@a" + " " + "{\"rawtext\":[{\"text\":\"\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\"}]")
-	server.Execute("tellraw" + " " + "@a" + " " + "{\"rawtext\":[{\"text\":\"\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\"}]")
-	server.Execute("tellraw" + " " + "@a" + " " + "{\"rawtext\":[{\"text\":\"\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\"}]")
+	for i := 0; i <= 150; i++ {
+		server.Enter()
+	}
 	server.Execute("tellraw" + " " + "@a" + " " + "{\"text\":\"■■■■■  DIM 服务器 已清屏 ■■■■■\",\"color\":\"yellow\"}")
 	/*tellraw @a {"text":"time.Now()","color":"red"} */
+}
+func (server *Server)Enter(){
+	server.Execute("tellraw" + " " + "@a" + " " + "{\"text\":\"■■■■■  富强 民主 文明 和谐 ■■■■■\",\"color\":\"red\"}")
 }
