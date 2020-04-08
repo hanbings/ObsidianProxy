@@ -45,7 +45,7 @@ func main() {
 /*初始化函数*/
 func (server *Server) Init(){
 	/*服务器名称*/
-	server.name = "Minecraft服务器"
+	server.name = "MineCraft服务器"
 	/*进程任务*/
 	server.Cmd = exec.Command("java","-jar","fabric-server-launch.jar")
 	/*输出管道*/
@@ -57,7 +57,7 @@ func (server *Server) Init(){
 	/*软件版本号*/
 	server.version = "Version：1.0.0 Obsidian Build 2020/4/6"
 	/*服务器游戏版本号*/
-	server.gameVersion = "Minecraft 1.14.4"
+	server.gameVersion = "MineCraft 1.14.4"
 	/*读取子进程*/
 	reader := bufio.NewReader(stdout)
 	for {
@@ -82,27 +82,25 @@ func (server *Server) Init(){
 			/*更改玩家模式并验证白名单*/
 			go server.PlayerJoinEvent(playerName)
 		}
-		/*接受玩家登录指令*/
-		if strings.Contains(string(d),"/login"){
-			//TODO 登录部分
-		}
 		/*登录指令*/
-		if strings.Contains(string(d),"/l"){
-			//TODO 登录指令别名
+		if strings.Contains(string(d),"@@l"){
+			var playerName, password = server.GetLPlayerWord(string(d))
+			if password != "nil" {
+				go server.PlayerLogin(playerName,password)
+			}
 		}
 		/*注册指令*/
-		if strings.Contains(string(d),"/register") {
-			//TODO 注册部分
-		}
-		/*注册指令*/
-		if strings.Contains(string(d),"/reg"){
-			//TODO 注册别名
+		if strings.Contains(string(d),"@@reg"){
+			var playerName, password = server.GetRegPlayerWord(string(d))
+			if password != "nil" {
+				go server.PlayerRegister(playerName,password)
+			}
 		}
 		/*打印输出*/
 		print(string(d))
 	}
 	/*模拟CMD暂停*/
-	bufio.NewReader(os.Stdin).ReadLine()
+	_, _, _ = bufio.NewReader(os.Stdin).ReadLine()
 }
 /**
 玩家加入服务器流程
@@ -121,7 +119,8 @@ func (server *Server)PlayerJoinEvent(playerName string) {
 		return
 	}
 	/*成功进入的话能看到登录提醒标题*/
-	server.SeedColorSubTitle(playerName,"欢迎，请输入/login 密码进行登录","使用/reg 密码来进行注册，请不要使用您的常用密码","green","yellow")
+	server.SeedColorSubTitle(playerName,"欢迎，请输入" +
+		"@@l + 密码进行登录","使用@@reg 密码来进行注册，请不要使用您的常用密码","green","yellow")
 }
 /*校验白名单*/
 func (server *Server)CheckPlayerOnWhiteList(playerName string) bool {
@@ -164,6 +163,7 @@ func (server *Server)CheckData() {
 		println("[ObsidianProxy]数据文件data不存在,正在创建...")
 		/*创建玩家数据文件*/
 		server.CreateDataFile("./OPRData","data.ini")
+		server.CreateINISection("./OPRData/data.ini","Player")
 		println("[ObsidianProxy]数据文件whitelist不存在,正在创建...")
 		/*创建白名单配置*/
 		server.CreateDataFile("./OPRData","whitelist.ini")
@@ -174,6 +174,7 @@ func (server *Server)CheckData() {
 	if server.CheckDataFile("./OPRData/data.ini") == false {
 		println("[ObsidianProxy]数据文件data不存在,正在创建...")
 		server.CreateDataFile("./OPRData","data.ini")
+		server.CreateINISection("./OPRData/data.ini","Player")
 	}
 	if server.CheckDataFile("./OPRData/whitelist.ini") == false {
 		println("[ObsidianProxy]数据文件whitelist不存在,正在创建...")
@@ -229,8 +230,8 @@ func (server *Server)SeedColorSubTitle(playerName string,message string,subMessa
 	server.Execute("title" + " " + playerName + " " + "title" + " " + "{\"text\":\"" + message + "\",\"color\":\"" + color +"\"}")
 }
 /*更改玩家游戏模式*/
-func (server *Server)ChangePlayerMode(gamemode string , playerName string){
-	server.Execute("gamemode" + " " + gamemode + " " + playerName )
+func (server *Server)ChangePlayerMode(gameMode string , playerName string){
+	server.Execute("gamemode" + " " + gameMode + " " + playerName )
 }
 /*踢出玩家*/
 func (server *Server)KickPlayer(playerName string,message string){
@@ -267,17 +268,73 @@ func (server *Server)GetLoginPlayerName(word string) string {
 func (server *Server)CreateINISection(INIPath string,sectionName string){
 	/*锁锁锁 ╰（‵□′）╯*/
 	server.lock.Lock()
-	var whitelist , err = ini.Load(INIPath)
+	var config , err = ini.Load(INIPath)
 	if err != nil {
-		println("[ObsidianProxy][ERRO]创建一个INI文件的过程中出现了错误：无法加载 " + INIPath + " 文件")
+		println("[ObsidianProxy][ERROR]加载一个INI文件的过程中出现了错误：无法加载 " + INIPath + " 文件")
+		server.lock.Unlock()
+		return
 	}
-	_, err = whitelist.NewSection(sectionName)
+	_, err = config.NewSection(sectionName)
 	if err != nil {
-		println("[ObsidianProxy][ERRO]创建一个INI文件分区的过程中出现了错误：无法在 " + INIPath + " 文件中创建分区")
+		println("[ObsidianProxy][ERROR]创建一个INI文件分区的过程中出现了错误：无法在 " + INIPath + " 文件中创建分区")
+		server.lock.Unlock()
+		return
 	}
-	whitelist.SaveTo(INIPath)
+	err = config.SaveTo(INIPath)
+	if err != nil {
+		println("[ObsidianProxy][ERROR]保存白名单时出现了错误")
+		server.lock.Unlock()
+		return
+	}
 	/*解锁解锁 QWQ*/
 	server.lock.Unlock()
+	return
+}
+/*在指定的INI中的指定分区创建一个指定键*/
+func (server *Server)CreateInIKey(INIPath string,sectionName string,keyName string,value string){
+	server.lock.Lock()
+	var config , err = ini.Load(INIPath)
+	if err != nil {
+		println("[ObsidianProxy][ERROR]加载一个INI文件时发生了错误，无法加载 "+ INIPath + " 文件")
+		server.lock.Unlock()
+		return
+	}
+	server.lock.Unlock()
+	if server.CheckKeyOn(INIPath,sectionName,keyName) == true{
+		println("[ObsidianProxy][WARN]键已存在，无需创建")
+		return
+	}
+	server.lock.Lock()
+	_, err = config.Section(sectionName).NewKey(keyName, value)
+	if err != nil{
+		println("[ObsidianProxy][ERROR]在 " + INIPath + " 中的 " + sectionName + " 创建键错误 参数：[键名] " + keyName + "[键名] " + value)
+		server.lock.Unlock()
+		return
+	}
+	err = config.SaveTo(INIPath)
+	if err != nil {
+		println("[ObsidianProxy][ERROR]保存一个INI文件时发生了错误，无法保存 "+ INIPath + " 文件")
+		server.lock.Unlock()
+		return
+	}
+	server.lock.Unlock()
+	return
+}
+/*检查键值是否存在*/
+func (server *Server)CheckKeyOn(INIPath string,sectionName string,keyName string) bool{
+	server.lock.Lock()
+	var config , err = ini.Load(INIPath)
+	if err != nil {
+		println("[ObsidianProxy][ERROR]加载一个INI文件时发生了错误，无法加载 "+ INIPath + " 文件")
+		server.lock.Unlock()
+		return false
+	}
+	if config.Section(sectionName).HasKey(keyName) == false{
+		server.lock.Unlock()
+		return false
+	}
+	server.lock.Unlock()
+	return true
 }
 /*打印软件版本号*/
 func (server *Server)PrintVersion() {
@@ -300,10 +357,83 @@ func (server *Server)GetServerName() string {
 	return server.name
 }
 /*玩家登录函数*/
-func (server *Server)PlayerLogin(){
-	//TODO 登录部分
+func (server *Server)PlayerLogin(playerName string,password string){
+	if server.CheckKeyOn("./OPRData/data.ini","Player",playerName) == false{
+		server.SeedColorTitle(playerName,"您还没有注册，请使用@@reg来进行注册","red")
+	}else {
+		if server.CheckPassword("./OPRData/data.ini","Player",playerName,password) == false{
+			println("[ObsidianProxy][WARN] 玩家 " + playerName + " 登录验证未通过")
+			server.KickPlayer(playerName,"密码错误，请重试")
+		} else {
+			server.ClearScreen()
+			server.SeedColorTitle(playerName,"欢迎回来","green")
+			server.ChangePlayerMode("survival",playerName)
+		}
+	}
 }
 /*玩家注册函数*/
-func (server *Server)PlayerRegister(){
-	//TODO 注册部分
+func (server *Server)PlayerRegister(playerName string,password string){
+	if server.CheckKeyOn("./OPRData/data.ini","Player",playerName) == true{
+		server.SeedColorTitle(playerName,"您已经注册了，请使用@@l来进行登录","red")
+		return
+	}
+	server.ClearScreen()
+	server.CreateInIKey("./OPRData/data.ini","Player",playerName,password)
+	server.SeedColorSubTitle(playerName,"欢迎回来","您已经成功注册 " + playerName + " 请牢记密码","green","red")
+	server.ChangePlayerMode("survival",playerName)
+	return
+}
+/*获取玩家登录时的玩家名函数解析（懒人限定）*/
+func (server *Server)GetLPlayerWord(word string) (string, string) {
+	var start = strings.Index(word,"[Server thread/INFO]:")
+	var nameEnd = strings.Index(word,"@@l")
+	var end = len(word)
+	var tempWord = word
+	var playerName = string([]rune(word)[start + 23 : nameEnd - 2])
+	if 33 + len(playerName) + 8 == end || 33 + len(playerName) + 8 > end{
+		server.SeedColorTitle(playerName,"数据格式不正确 @@l + 密码","red")
+		return playerName,"nil"
+	}
+	var password = string([]rune(tempWord)[nameEnd + 4 : end - 2])
+	return playerName , password
+}
+/*获取玩家注册时的名字和密码别称解析（懒人限定）*/
+func (server *Server)GetRegPlayerWord(word string)(string,string){
+	var start = strings.Index(word,"[Server thread/INFO]:")
+	var nameEnd = strings.Index(word,"@@reg")
+	var end = len(word)
+	var tempWord = word
+	var playerName = string([]rune(word)[start + 23 : nameEnd - 2])
+	if 33 + len(playerName) + 10 == end || 33 + len(playerName) + 10 > end{
+		server.SeedColorTitle(playerName,"数据格式不正确 @@reg + 密码","red")
+		return playerName,"nil"
+	}
+	var password = string([]rune(tempWord)[nameEnd + 6 : end - 2])
+	return playerName , password
+}
+/*检查密码*/
+func (server *Server)CheckPassword(INIPath string,sectionName string,playerName string,password string)bool{
+	server.lock.Lock()
+	var config , err = ini.Load(INIPath)
+	if err != nil {
+		println("[ObsidianProxy][ERROR]加载一个INI文件的过程中出现了错误：无法加载 " + INIPath + " 文件")
+		server.lock.Unlock()
+		return false
+	}
+	if config.Section(sectionName).Key(playerName).Value() == password{
+		server.lock.Unlock()
+		return true
+	}
+	server.lock.Unlock()
+	return false
+}
+/*换行150次清屏*/
+func (server *Server)ClearScreen(){
+	server.Execute("tellraw" + " " + "@a" + " " + "{\"rawtext\":[{\"text\":\"\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\"}]")
+	server.Execute("tellraw" + " " + "@a" + " " + "{\"rawtext\":[{\"text\":\"\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\"}]")
+	server.Execute("tellraw" + " " + "@a" + " " + "{\"rawtext\":[{\"text\":\"\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\"}]")
+	server.Execute("tellraw" + " " + "@a" + " " + "{\"rawtext\":[{\"text\":\"\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\"}]")
+	server.Execute("tellraw" + " " + "@a" + " " + "{\"rawtext\":[{\"text\":\"\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\"}]")
+	server.Execute("tellraw" + " " + "@a" + " " + "{\"text\":\"■■■■■  DIM 服务器 已清屏 ■■■■■\",\"color\":\"yellow\"}")
+	/*tellraw @a {"text":"time.Now()","color":"red"} */
 }
