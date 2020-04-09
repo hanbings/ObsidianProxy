@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"strings"
 	. "sync"
+	"time"
 	_ "unicode"
 
 	"golang.org/x/text/encoding/simplifiedchinese"
@@ -32,6 +33,7 @@ type Server struct{
 	lock   Mutex          //输入管道同步锁
 	version string 		  //Obsidian版本号
 	gameVersion string    //服务器游戏版本号
+	cleanTimeFlag bool	  //时间标志位
 }
 /*主函数*/
 func main() {
@@ -39,25 +41,32 @@ func main() {
 	server := Server{}
 	/*检查数据文件是否存在*/
 	server.CheckData()
+	/*设置*/
+	server.setAny()
 	/*启动服务器*/
 	server.Init()
 }
-/*初始化函数*/
-func (server *Server) Init(){
+/*设置一些非必要文字和启动清理线程*/
+func (server *Server) setAny(){
 	/*服务器名称*/
 	server.name = "MineCraft服务器"
+	/*软件版本号*/
+	server.version = "Version：1.0.0 Obsidian Build 2020/4/9"
+	/*服务器游戏版本号*/
+	server.gameVersion = "MineCraft 1.14.4"
+	/*启动清理线程*/
+	go server.CleanItemInTime()
+}
+/*初始化函数*/
+func (server *Server) Init(){
 	/*进程任务*/
-	server.Cmd = exec.Command("java","-jar","fabric-server-launch.jar")
+	server.Cmd = exec.Command("java","-Xmx8G","-Xms32M","-jar","fabric-server-launch.jar")
 	/*输出管道*/
 	stdout, _ := server.Cmd.StdoutPipe()
 	/*输入管道*/
 	server.stdin, _ = server.Cmd.StdinPipe()
 	/*启动进程*/
 	_ = server.Cmd.Start()
-	/*软件版本号*/
-	server.version = "Version：1.0.0 Obsidian Build 2020/4/6"
-	/*服务器游戏版本号*/
-	server.gameVersion = "MineCraft 1.14.4"
 	/*读取子进程*/
 	reader := bufio.NewReader(stdout)
 	for {
@@ -75,10 +84,8 @@ func (server *Server) Init(){
 		if strings.Contains(string(d),"joined") {
 			/*获取玩家名*/
 			var playerName = server.GetLoginPlayerName(string(d))
-			/*生成指令*/
-			var _command = "say " + playerName + "加入了服务器"
-			/*执行指令*/
-			server.Execute(_command)
+			/*玩家加入提示*/
+			server.tellRaw("@a",playerName + "加入了服务器","gold")
 			/*更改玩家模式并验证白名单*/
 			go server.PlayerJoinEvent(playerName)
 		}
@@ -95,6 +102,19 @@ func (server *Server) Init(){
 			if password != "nil" {
 				go server.PlayerRegister(playerName,password)
 			}
+		}
+		/*玩家死亡时将时间标志位设为true*/
+		if strings.Contains(string(d),"@@wc"){
+			server.lock.Lock()
+			server.cleanTimeFlag = true
+			server.lock.Unlock()
+			server.tellRaw("@a","[小可爱]■ 已将标志位置1，请注意，进入了60秒倒计时时此指令会在清理后生效 ■","red")
+		}
+		if strings.Contains(string(d),"@@help") {
+			server.Helper()
+		}
+		if strings.Contains(string(d),"@@version") {
+			server.PrintInfo()
 		}
 		/*打印输出*/
 		print(string(d))
@@ -394,6 +414,9 @@ func (server *Server)GetLPlayerWord(word string) (string, string) {
 		server.SeedColorTitle(playerName,"数据格式不正确 @@l + 密码","red")
 		return playerName,"nil"
 	}
+	if start + 3 + 22 + len(playerName) != nameEnd {
+		return playerName,"nil"
+	}
 	var password = string([]rune(tempWord)[nameEnd + 4 : end - 2])
 	return playerName , password
 }
@@ -406,6 +429,9 @@ func (server *Server)GetRegPlayerWord(word string)(string,string){
 	var playerName = string([]rune(word)[start + 23 : nameEnd - 2])
 	if 33 + len(playerName) + 10 == end || 33 + len(playerName) + 10 > end{
 		server.SeedColorTitle(playerName,"数据格式不正确 @@reg + 密码","red")
+		return playerName,"nil"
+	}
+	if start + 3 + 22 + len(playerName) != nameEnd {
 		return playerName,"nil"
 	}
 	var password = string([]rune(tempWord)[nameEnd + 6 : end - 2])
@@ -427,14 +453,57 @@ func (server *Server)CheckPassword(INIPath string,sectionName string,playerName 
 	server.lock.Unlock()
 	return false
 }
-/*换行150次清屏*/
+/*换行66次清屏*/
 func (server *Server)ClearScreen(){
-	for i := 0; i <= 150; i++ {
-		server.Enter()
+	for i := 0; i <= 66; i++ {
+		server.EnterPrint()
 	}
-	server.Execute("tellraw" + " " + "@a" + " " + "{\"text\":\"■■■■■  DIM 服务器 已清屏 ■■■■■\",\"color\":\"yellow\"}")
-	/*tellraw @a {"text":"time.Now()","color":"red"} */
+	server.tellRaw("@a","■■■■■  DIM 服务器 已清屏 ■■■■■","yellow")
 }
-func (server *Server)Enter(){
-	server.Execute("tellraw" + " " + "@a" + " " + "{\"text\":\"■■■■■  富强 民主 文明 和谐 ■■■■■\",\"color\":\"red\"}")
+/*打印软件信息*/
+func (server *Server)PrintInfo(){
+	server.tellRaw("@a","■游戏版本" + server.GetGameVersion(),"blue")
+	server.tellRaw("@a","■软件版本" + server.GetVersion(),"blue")
+	server.tellRaw("@a","■Github" + "https://github.com/hanbings/ObsidianProxy/","blue")
+	server.tellRaw("@a","■作者" + "寒冰 Hanbings 3219065882@qq.com","blue")
+
+}
+/*回车打印社会主义核心价值观*/
+func (server *Server)EnterPrint(){
+	server.tellRaw("@a","■■■■■  富强 民主 文明 和谐 ■■■■■","red")
+	server.tellRaw("@a","■■■■■  自由 平等 公正 法治 ■■■■■","red")
+	server.tellRaw("@a","■■■■■  爱国 敬业 诚信 友善 ■■■■■","red")
+}
+/*定时清理*/
+func (server *Server)CleanItemInTime() {
+	time.Sleep(120 *time.Second)
+	println("[ObsidianProxy][INFO]垃圾清理已成功启动")
+	for {
+			time.Sleep(600 * time.Second)
+			if server.cleanTimeFlag == true {
+				server.cleanTimeFlag = false
+				server.tellRaw("@a","[小可爱]■ 垃圾清理已被延迟 10分钟 ■■■■■■","green")
+				time.Sleep( 600 * time.Second)
+			}
+			server.tellRaw("@a","[小可爱]■ 60秒后清理垃圾 ■■■","green")
+			time.Sleep(20 * time.Second)
+			server.tellRaw("@a","[小可爱]■ 40秒后清理垃圾 ■■","green")
+			time.Sleep(20 * time.Second)
+			server.tellRaw("@a","[小可爱]■ 20秒后清理垃圾 ■","green")
+			time.Sleep(20 * time.Second)
+			server.Execute("kill" + " " + "@e[type = item]")
+			server.tellRaw("@a","[小可爱]■ 清理完成 ■■■■■■","red")
+	}
+}
+/*封装一个tellRaw类*/
+func (server *Server)tellRaw (playerName string,message string,color string){
+	server.Execute("tellraw" + " " + playerName + " " + "{\"text\":\"" + message+ "\",\"color\":\"" + color + "\"}")
+}
+/*帮助菜单*/
+func (server *Server)Helper(){
+	server.tellRaw("@a","■■■■■■■■■■ help ■■■■■■■■■■","green")
+	server.tellRaw("@a","      @@l + 密码 --登录    ","white")
+	server.tellRaw("@a","     @@reg + 密码 --注册   ","white")
+	server.tellRaw("@a","    @@wc --将清理延迟10分钟 ","white")
+	server.tellRaw("@a","■■■■■■■■■■■■■■■■■■■■■■■■  ","green")
 }
