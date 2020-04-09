@@ -130,7 +130,7 @@ func (server *Server) Init(){
 /*玩家加入服务器后第一个到达的函数*/
 func (server *Server)PlayerJoinEvent(playerName string) {
 	/*先更改玩家模式*/
-	server.ChangePlayerMode("spectator", playerName )
+	server.ChangePlayerMode("adventure", playerName )
 	/*使用判断玩家是否在白名单内*/
 	if server.CheckPlayerOnWhiteList(playerName) == false {
 		/*不在就踢出*/
